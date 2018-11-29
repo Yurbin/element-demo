@@ -32,7 +32,6 @@
     <br /><br />
     <essp-input-number class="essp-input-number"
                        type="numberrange">
-                       
       <!-- <el-select v-model="select2"
                  slot="append"
                  placeholder="请选择">
