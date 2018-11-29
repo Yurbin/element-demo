@@ -1,12 +1,14 @@
 <template>
   <div class="essp-input-number"
        :class="[
-    {
-      'el-input-group': $slots.prepend || $slots.append,
-      'el-input-group--append': $slots.append,
-      'el-input-group--prepend': $slots.prepend
-    }
-  ]">
+          {
+            'el-input-group': $slots.prepend || $slots.append,
+            'el-input-group--append': $slots.append,
+            'el-input-group--prepend': $slots.prepend
+          }
+        ]"
+       @mouseenter="hovering = true"
+       @mouseleave="hovering = false">
     <!-- 前置元素 -->
     <div class="el-input-group__prepend"
          v-if="$slots.prepend">
@@ -15,13 +17,14 @@
     <!-- 单数字框 -->
     <div v-if="!ranged">
       <el-input ref="input"
-                :value="currentInputValue"
+                :value="displayValue"
                 :placeholder="placeholder"
                 :disabled="inputNumberDisabled"
                 :max="max"
                 :min="min"
                 :name="name"
                 :label="label"
+                :clearable="clearable"
                 @blur="handleBlur"
                 @focus="handleFocus"
                 @change="handleInputChange">
@@ -29,30 +32,39 @@
     </div>
     <!-- 数字区间 -->
     <div v-else
-         class="el-date-editor el-range-editor el-input__inner">
-      <input autocomplete="off"
+         class="el-date-editor el-range-editor el-input__inner"
+         :class="[
+            {
+              'is-disabled': inputNumberDisabled,
+              'is-active': focused,
+              'el-input--prefix': $slots.prefix || prefixIcon,
+              'el-input--suffix': $slots.suffix || suffixIcon || clearable
+            }
+          ]">
+      <input :value="displayValue && displayValue[0]"
              :placeholder="startPlaceholder"
-             :value="displayValue && displayValue[0]"
              :disabled="inputNumberDisabled"
-             v-bind="firstInputId"
-             :readonly="!editable || readonly"
-             @change="handleStartChange"
+             :max="max"
+             :min="min"
+             @blur="handleBlur"
              @focus="handleFocus"
+             @change="handleStartChange"
              class="el-range-input">
       <slot name="range-separator">
         <span class="el-range-separator">{{ rangeSeparator }}</span>
       </slot>
-      <input autocomplete="off"
+      <input :value="displayValue && displayValue[1]"
              :placeholder="endPlaceholder"
-             :value="displayValue && displayValue[1]"
              :disabled="inputNumberDisabled"
-             v-bind="secondInputId"
-             :readonly="!editable || readonly"
-             @change="handleEndChange"
+             @blur="handleBlur"
              @focus="handleFocus"
+             @change="handleEndChange"
              class="el-range-input">
+      <i v-if="showClear"
+         class="el-input__icon el-icon-circle-close el-range__close-icon"
+         @click="clear">
+      </i>
     </div>
-
     <!-- 后置元素 -->
     <div class="el-input-group__append"
          v-if="$slots.append">
@@ -83,7 +95,7 @@ export default {
   props: {
     type: {
       type: String,
-      default: "number"
+      default: "number" // number、numberrange
     },
     max: {
       type: Number,
@@ -96,11 +108,6 @@ export default {
     value: {},
     disabled: Boolean,
     readonly: Boolean,
-    editable: {
-      type: Boolean,
-      default: true
-    },
-    size: String,
     controls: {
       type: Boolean,
       default: true
@@ -110,7 +117,13 @@ export default {
       default: ""
     },
     name: String,
+    suffixIcon: String,
+    prefixIcon: String,
     label: String,
+    clearable: {
+      type: Boolean,
+      default: true
+    },
     placeholder: {
       type: String,
       default: "请输入数字"
@@ -135,26 +148,31 @@ export default {
   },
   data() {
     return {
-      currentValue: 0,
-      userInput: null
+      userInput: undefined,
+      hovering: false,
+      focused: false
     };
   },
   watch: {
     value: {
       immediate: true,
-      handler(value) {
-        let newVal = value === undefined ? value : Number(value);
+      handler(newVal) {
         if (newVal !== undefined) {
-          if (isNaN(newVal)) {
-            return;
-          }
-          if (this.precision !== undefined) {
-            newVal = this.toPrecision(newVal, this.precision);
+          if (Array.isArray(newVal)) {
+            let [startVal, endVal] = newVal;
+            let allIsNum = newVal.every(o => !isNaN(Number(o)));
+            if (!allIsNum || startVal > endVal) {
+              return;
+            }
+          } else {
+            newVal = Number(newVal);
+            if (isNaN(newVal)) {
+              return;
+            }
+            newVal = this.parseValue(newVal);
           }
         }
-        if (newVal >= this.max) newVal = this.max;
-        if (newVal <= this.min) newVal = this.min;
-        this.currentValue = newVal;
+        this.userInput = newVal;
         this.$emit("input", newVal);
       }
     }
@@ -168,7 +186,6 @@ export default {
       const stepPrecision = getPrecision(step);
       if (precision !== undefined) {
         if (stepPrecision > precision) {
-          // eslint-disable-next-line
           console.warn(
             "[Element Warn][InputNumber]precision should not be less than the decimal places of step"
           );
@@ -178,43 +195,39 @@ export default {
         return Math.max(getPrecision(value), stepPrecision);
       }
     },
-    currentInputValue() {
-      const currentValue = this.currentValue;
-      if (typeof currentValue === "number" && this.precision !== undefined) {
-        return currentValue.toFixed(this.precision);
-      } else {
-        return currentValue;
-      }
-    },
     inputNumberDisabled() {
       return this.disabled || (this.elForm || {}).disabled;
     },
+    showClear() {
+      return (
+        this.clearable &&
+        !this.inputNumberDisabled &&
+        !this.readonly &&
+        this.userInput !== undefined &&
+        (this.focused || this.hovering)
+      );
+    },
     displayValue() {
-      if (Array.isArray(this.userInput)) {
-        return [this.userInput[0], this.userInput[1]];
+      const { userInput, precision, toPrecision } = this;
+      if (Array.isArray(userInput)) {
+        let [startVal, endVal] = userInput;
+        if (precision !== undefined) {
+          if (typeof startVal === "number") {
+            startVal = Number(startVal).toFixed(precision);
+          }
+          if (typeof endVal === "number") {
+            endVal = Number(endVal).toFixed(precision);
+          }
+        }
+        return [startVal, endVal];
+      } else {
+        if (typeof userInput === "number" && precision !== undefined) {
+          return userInput.toFixed(precision);
+        } else {
+          return userInput;
+        }
       }
       return undefined;
-    },
-    firstInputId() {
-      const obj = {};
-      let id;
-      if (this.ranged) {
-        id = this.id && this.id[0];
-      } else {
-        id = this.id;
-      }
-      if (id) obj.id = id;
-      return obj;
-    },
-
-    secondInputId() {
-      const obj = {};
-      let id;
-      if (this.ranged) {
-        id = this.id && this.id[1];
-      }
-      if (id) obj.id = id;
-      return obj;
     }
   },
   methods: {
@@ -234,25 +247,63 @@ export default {
     },
     handleBlur(event) {
       this.$emit("blur", event);
-      this.$refs.input.setCurrentValue(this.currentInputValue);
+      this.focused = false;
+      this.setCurrentValue(this.displayValue);
     },
     handleFocus(event) {
       this.$emit("focus", event);
+      this.focused = true;
+    },
+    valueEquals(a, b) {
+      const aIsArray = a instanceof Array;
+      const bIsArray = b instanceof Array;
+      if (aIsArray && bIsArray) {
+        if (a.length !== b.length) {
+          return false;
+        }
+        return a.every((item, index) => item === b[index]);
+      }
+      if (!aIsArray && !bIsArray) {
+        return a === b;
+      }
+      return false;
+    },
+    parseValue(value) {
+      if (value !== undefined) {
+        value = Number(value);
+      }
+      if (typeof value === "number" && this.precision !== undefined) {
+        value = this.toPrecision(value, this.precision);
+      }
+      if (value >= this.max) value = this.max;
+      if (value <= this.min) value = this.min;
+      return value;
     },
     setCurrentValue(newVal) {
-      const oldVal = this.currentValue;
-      if (typeof newVal === "number" && this.precision !== undefined) {
-        newVal = this.toPrecision(newVal, this.precision);
+      const oldVal = this.userInput;
+      const parseValue = this.parseValue;
+      if (Array.isArray(newVal)) {
+        let [startVal, endVal] = newVal;
+        startVal = parseValue(startVal);
+        endVal = parseValue(endVal);
+        if (
+          startVal !== undefined &&
+          endVal !== undefined &&
+          startVal > endVal
+        ) {
+          newVal = oldVal;
+        } else {
+          newVal = [startVal, endVal];
+        }
+      } else {
+        newVal = parseValue(newVal);
       }
-      if (newVal >= this.max) newVal = this.max;
-      if (newVal <= this.min) newVal = this.min;
-      if (oldVal === newVal) {
-        this.$refs.input.setCurrentValue(this.currentInputValue);
-        return;
+
+      if (!this.valueEquals(newVal, oldVal)) {
+        this.$emit("input", newVal);
+        this.$emit("change", newVal, oldVal);
+        this.userInput = newVal;
       }
-      this.$emit("input", newVal);
-      this.$emit("change", newVal, oldVal);
-      this.currentValue = newVal;
     },
     handleInputChange(value) {
       const newVal = value === "" ? undefined : Number(value);
@@ -260,22 +311,28 @@ export default {
         this.setCurrentValue(newVal);
       }
     },
-    select() {
-      this.$refs.input.select();
-    },
     handleStartChange(event) {
-      if (this.userInput) {
-        this.userInput = [event.target.value, this.userInput[1]];
-      } else {
-        this.userInput = [event.target.value, null];
+      let value = event.target.value;
+      const newVal = value === "" ? undefined : Number(value);
+      if (!isNaN(newVal) || value === "") {
+        let endVal = this.userInput && this.userInput[1];
+        this.setCurrentValue([newVal, endVal]);
       }
     },
-    handleEndChange() {
-      if (this.userInput) {
-        this.userInput = [this.userInput[0], event.target.value];
-      } else {
-        this.userInput = [null, event.target.value];
+    handleEndChange(event) {
+      let value = event.target.value;
+      const newVal = value === "" ? undefined : Number(value);
+      if (!isNaN(newVal) || value === "") {
+        let startVal = this.userInput && this.userInput[0];
+        this.setCurrentValue([startVal, newVal]);
       }
+    },
+    clear() {
+      let newVal = this.ranged ? undefined : "";
+      this.$emit("input", newVal);
+      this.$emit("change", newVal, this.userInput);
+      this.$emit("clear");
+      this.setCurrentValue(newVal);
     }
   }
 };
@@ -284,14 +341,17 @@ export default {
 <style lang="less" scoped>
 .essp-input-number {
   .el-date-editor {
-    &.el-input__inner {
+    &.el-range-editor {
       width: 100%;
+      display: inline-flex;
     }
-    .el-range-input {
-      width: calc(50% - 10px);
-    }
-    .el-range-separator {
-      width: 20px;
+    &:not(.el-input--suffix) {
+      .el-range-input {
+        width: calc(50% - 10px);
+      }
+      .el-range-separator {
+        width: 20px;
+      }
     }
   }
 }

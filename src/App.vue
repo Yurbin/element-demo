@@ -1,8 +1,7 @@
 <template>
   <div id="app">
     <essp-input-number class="essp-input-number"
-                       v-model="number1"
-                       placeholder="请输入数字">
+                       v-model="number1">
       <el-select v-model="select1"
                  slot="prepend"
                  clearable
@@ -16,8 +15,7 @@
     </essp-input-number>
     <br /><br />
     <essp-input-number class="essp-input-number"
-                       v-model="number2"
-                       placeholder="请输入数字">
+                       v-model="number2">
       <el-select v-model="select2"
                  slot="append"
                  clearable
@@ -31,17 +29,27 @@
     </essp-input-number>
     <br /><br />
     <essp-input-number class="essp-input-number"
-                       type="numberrange">
-      <!-- <el-select v-model="select2"
+                       type="numberrange"
+                       v-model="number3"
+                       :clearable="false"
+                       :min="10"
+                       :disabled="true"
+                       @change="handleChange3">
+      <el-select v-model="select3"
                  slot="append"
+                 clearable
                  placeholder="请选择">
-        <el-option label="餐厅名"
-                   value="1"></el-option>
-        <el-option label="订单号"
-                   value="2"></el-option>
-        <el-option label="用户电话"
-                   value="3"></el-option>
-      </el-select> -->
+        <el-option v-for="item in options"
+                   :key="item.value"
+                   :label="item.label"
+                   :value="item.value">
+        </el-option>
+      </el-select>
+    </essp-input-number>
+    <br /><br />
+    <essp-input-number class="essp-input-number"
+                       type="numberrange"
+                       v-model="number4">
     </essp-input-number>
   </div>
 </template>
@@ -69,11 +77,25 @@ export default {
       ],
       select1: "",
       select2: "",
-      number1: undefined,
-      number2: undefined
+      select3: "",
+      number1: 111.2345,
+      number2: undefined,
+      number3: [1, 2],
+      number4: undefined
     };
   },
-  methods: {}
+  methods: {
+    handleChange3(newVal, oldVal) {
+      console.log(
+        "newVal : ",
+        newVal,
+        "oldVal : ",
+        oldVal,
+        "number3 : ",
+        this.number3
+      );
+    }
+  }
 };
 </script>
 
@@ -85,7 +107,7 @@ export default {
     width: 240px;
     .el-select {
       .el-input {
-        width: 100px;
+        width: 90px;
       }
     }
   }
